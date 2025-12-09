@@ -36,7 +36,11 @@ class RootViewModel: ObservableObject {
         for url in urls {
             do {
                 try await bookmarkManager.accessSecuredResourceAsync(url) {
-                    let collection = try await scanner.scanDirectoryTree(url, isRootFolder: true)
+                    let collection = try await scanner.scanDirectoryTree(url, isRootFolder: true) { [weak self] progress in
+                        Task { @MainActor in
+                            self?.scanProgress = progress
+                        }
+                    }
                     rootFolders.append(collection)
                 }
             } catch {
@@ -71,23 +75,25 @@ class RootViewModel: ObservableObject {
         }
 
         isScanning = true
+        scanProgress = ScanProgress(currentFolder: url.lastPathComponent, foldersScanned: 0, totalFolders: nil)
         errorMessage = nil
 
         do {
             // Save bookmark for persistence
             try bookmarkManager.saveRootFolder(url)
 
-            // Scan the entire directory tree
+            // Scan the entire directory tree with progress updates
             try await bookmarkManager.accessSecuredResourceAsync(url) {
-                let collection = try await scanner.scanDirectoryTree(url, isRootFolder: true)
+                let collection = try await scanner.scanDirectoryTree(url, isRootFolder: true) { [weak self] progress in
+                    Task { @MainActor in
+                        self?.scanProgress = progress
+                    }
+                }
 
-                // Check if there are JPEG-only folders that need classification
-                let jpegOnlyCollections = collection.flattenedCollections().filter { $0.needsJPEGClassification }
-
-                if let firstJPEGCollection = jpegOnlyCollections.first {
-                    // For now, prompt for the first one we find
-                    // The user will only be asked when they open a folder, not for every subdirectory
-                    pendingJPEGCollection = firstJPEGCollection
+                // Check if the ROOT folder itself has JPEG-only content that needs classification
+                if collection.needsJPEGClassification {
+                    pendingJPEGCollection = collection
+                    pendingJPEGFolderName = collection.name
                 }
 
                 rootFolders.append(collection)
@@ -98,6 +104,7 @@ class RootViewModel: ObservableObject {
         }
 
         isScanning = false
+        scanProgress = nil
     }
 
     /// Removes a root folder
@@ -129,12 +136,17 @@ class RootViewModel: ObservableObject {
             let rootURL = rootFolders[rootFolderIndex].url
 
             isScanning = true
+            scanProgress = ScanProgress(currentFolder: rootURL.lastPathComponent, foldersScanned: 0, totalFolders: nil)
             errorMessage = nil
 
             do {
                 try await bookmarkManager.accessSecuredResourceAsync(rootURL) {
                     // Re-scan the entire root folder tree
-                    let updatedRoot = try await scanner.scanDirectoryTree(rootURL, isRootFolder: true)
+                    let updatedRoot = try await scanner.scanDirectoryTree(rootURL, isRootFolder: true) { [weak self] progress in
+                        Task { @MainActor in
+                            self?.scanProgress = progress
+                        }
+                    }
                     rootFolders[rootFolderIndex] = updatedRoot
 
                     // Try to find and re-select the corresponding collection in the updated tree
@@ -149,6 +161,7 @@ class RootViewModel: ObservableObject {
             }
 
             isScanning = false
+            scanProgress = nil
         }
     }
 
@@ -208,5 +221,6 @@ class RootViewModel: ObservableObject {
     /// Dismisses the JPEG classification prompt without adding the collection
     func dismissJPEGClassification() {
         pendingJPEGCollection = nil
+        pendingJPEGFolderName = nil
     }
 }

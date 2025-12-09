@@ -47,41 +47,67 @@ struct CollapsibleTreeRow: View {
     @ObservedObject var viewModel: RootViewModel
     let level: Int
 
-    @State private var isExpanded: Bool = true // Default to expanded
+    @State private var isExpanded: Bool = false // Default to collapsed
 
     var body: some View {
-        DisclosureGroup(
-            isExpanded: $isExpanded,
-            content: {
-                // Render children
-                ForEach(collection.children) { child in
-                    CollapsibleTreeRow(collection: child, viewModel: viewModel, level: level + 1)
+        if collection.children.isEmpty {
+            // No children - simple row without disclosure
+            CollectionRowLabel(collection: collection, isRootFolder: collection.isRootFolder)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    viewModel.selectedCollection = collection
                 }
-            },
-            label: {
-                CollectionRowLabel(collection: collection, isRootFolder: collection.isRootFolder)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        viewModel.selectedCollection = collection
+                .contextMenu {
+                    if collection.isRootFolder {
+                        Button(role: .destructive) {
+                            viewModel.removeRootFolder(collection)
+                        } label: {
+                            Label("Remove Folder", systemImage: "trash")
+                        }
                     }
-                    .contextMenu {
-                        if collection.isRootFolder {
-                            Button(role: .destructive) {
-                                viewModel.removeRootFolder(collection)
+
+                    Button {
+                        NSWorkspace.shared.selectFile(collection.url.path, inFileViewerRootedAtPath: collection.url.deletingLastPathComponent().path)
+                    } label: {
+                        Label("Reveal in Finder", systemImage: "folder.circle")
+                    }
+                }
+                .tag(collection as PhotoCollection?)
+        } else {
+            // Has children - use disclosure group
+            DisclosureGroup(
+                isExpanded: $isExpanded,
+                content: {
+                    // Render children
+                    ForEach(collection.children) { child in
+                        CollapsibleTreeRow(collection: child, viewModel: viewModel, level: level + 1)
+                    }
+                },
+                label: {
+                    CollectionRowLabel(collection: collection, isRootFolder: collection.isRootFolder)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            viewModel.selectedCollection = collection
+                        }
+                        .contextMenu {
+                            if collection.isRootFolder {
+                                Button(role: .destructive) {
+                                    viewModel.removeRootFolder(collection)
+                                } label: {
+                                    Label("Remove Folder", systemImage: "trash")
+                                }
+                            }
+
+                            Button {
+                                NSWorkspace.shared.selectFile(collection.url.path, inFileViewerRootedAtPath: collection.url.deletingLastPathComponent().path)
                             } label: {
-                                Label("Remove Folder", systemImage: "trash")
+                                Label("Reveal in Finder", systemImage: "folder.circle")
                             }
                         }
-
-                        Button {
-                            NSWorkspace.shared.selectFile(collection.url.path, inFileViewerRootedAtPath: collection.url.deletingLastPathComponent().path)
-                        } label: {
-                            Label("Reveal in Finder", systemImage: "folder.circle")
-                        }
-                    }
-            }
-        )
-        .tag(collection as PhotoCollection?)
+                }
+            )
+            .tag(collection as PhotoCollection?)
+        }
     }
 }
 

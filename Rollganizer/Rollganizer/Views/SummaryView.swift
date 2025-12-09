@@ -13,7 +13,7 @@ struct SummaryView: View {
     var body: some View {
         Group {
             if viewModel.isScanning {
-                ProgressView("Scanning directory...")
+                ScanningProgressView(progress: viewModel.scanProgress)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.errorMessage {
                 VStack(spacing: 12) {
@@ -320,7 +320,7 @@ struct JPEGClassificationSheet: View {
     let collection: PhotoCollection
     @ObservedObject var viewModel: RootViewModel
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         VStack(spacing: 24) {
             // Header
@@ -328,11 +328,18 @@ struct JPEGClassificationSheet: View {
                 Image(systemName: "photo.on.rectangle.angled")
                     .font(.system(size: 48))
                     .foregroundStyle(.blue)
-                
+
                 Text("JPEG-Only Folder Detected")
                     .font(.title2)
                     .fontWeight(.semibold)
-                
+
+                // Show folder name
+                if let folderName = viewModel.pendingJPEGFolderName {
+                    Text("Folder: \(folderName)")
+                        .font(.headline)
+                        .foregroundStyle(.blue)
+                }
+
                 Text("This folder contains \(collection.photos.count) JPEG file\(collection.photos.count == 1 ? "" : "s") with no RAW files.")
                     .font(.body)
                     .foregroundStyle(.secondary)
@@ -425,6 +432,52 @@ struct ClassificationButton: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// macOS-style scanning progress view
+struct ScanningProgressView: View {
+    let progress: ScanProgress?
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "folder.badge.gearshape")
+                .font(.system(size: 48))
+                .foregroundStyle(.blue)
+
+            if let progress = progress {
+                Text("Scanning \(progress.currentFolder)...")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                if progress.isIndeterminate {
+                    // Indeterminate horizontal bar (bounces side to side)
+                    ProgressView()
+                        .progressViewStyle(.linear)
+                        .frame(width: 300)
+                } else {
+                    // Determinate progress bar
+                    VStack(spacing: 8) {
+                        ProgressView(value: Double(progress.foldersScanned), total: Double(progress.totalFolders ?? 1))
+                            .progressViewStyle(.linear)
+                            .frame(width: 300)
+
+                        Text("\(progress.foldersScanned) of \(progress.totalFolders ?? 0) folders")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Text("Preparing scan...")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+
+                ProgressView()
+                    .progressViewStyle(.linear)
+                    .frame(width: 300)
+            }
+        }
+        .padding()
     }
 }
 
