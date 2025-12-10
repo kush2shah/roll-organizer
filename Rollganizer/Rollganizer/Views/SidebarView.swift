@@ -9,21 +9,25 @@ import SwiftUI
 
 struct SidebarView: View {
     @ObservedObject var viewModel: RootViewModel
+    @State private var selection: PhotoCollection.ID?
 
     var body: some View {
-        List(selection: $viewModel.selectedCollection) {
-            Section("Root Folders") {
-                if viewModel.rootFolders.isEmpty {
-                    Text("No folders added")
-                        .foregroundStyle(.secondary)
-                        .font(.subheadline)
-                } else {
-                    ForEach(viewModel.rootFolders) { rootFolder in
-                        CollapsibleTreeRow(collection: rootFolder, viewModel: viewModel, level: 0)
+        List(selection: $selection) {
+            if viewModel.rootFolders.isEmpty {
+                ContentUnavailableView(
+                    "No Folders",
+                    systemImage: "folder.badge.plus",
+                    description: Text("Add a folder to get started")
+                )
+            } else {
+                ForEach(viewModel.rootFolders) { rootFolder in
+                    OutlineGroup(rootFolder, children: \.optionalChildren) { collection in
+                        FolderRowContent(collection: collection, viewModel: viewModel)
                     }
                 }
             }
         }
+        .listStyle(.sidebar)
         .navigationTitle("Photo Collections")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -38,83 +42,45 @@ struct SidebarView: View {
                 .keyboardShortcut("o", modifiers: .command)
             }
         }
-    }
-}
+        .onChange(of: selection) { oldValue, newValue in
+            if let newValue = newValue {
+                // Find the collection with this ID
+                for rootFolder in viewModel.rootFolders {
+                    if let found = findCollection(id: newValue, in: rootFolder) {
+                        viewModel.selectedCollection = found
 
-/// Recursive collapsible tree row for hierarchical folder display
-struct CollapsibleTreeRow: View {
-    let collection: PhotoCollection
-    @ObservedObject var viewModel: RootViewModel
-    let level: Int
-
-    @State private var isExpanded: Bool = false // Default to collapsed
-
-    var body: some View {
-        if collection.children.isEmpty {
-            // No children - simple row without disclosure
-            CollectionRowLabel(collection: collection, isRootFolder: collection.isRootFolder)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    viewModel.selectedCollection = collection
-                }
-                .contextMenu {
-                    if collection.isRootFolder {
-                        Button(role: .destructive) {
-                            viewModel.removeRootFolder(collection)
-                        } label: {
-                            Label("Remove Folder", systemImage: "trash")
+                        // Check if this folder needs JPEG classification
+                        if found.needsJPEGClassification {
+                            viewModel.pendingJPEGCollection = found
+                            viewModel.pendingJPEGFolderName = found.name
                         }
-                    }
-
-                    Button {
-                        NSWorkspace.shared.selectFile(collection.url.path, inFileViewerRootedAtPath: collection.url.deletingLastPathComponent().path)
-                    } label: {
-                        Label("Reveal in Finder", systemImage: "folder.circle")
+                        break
                     }
                 }
-                .tag(collection as PhotoCollection?)
-        } else {
-            // Has children - use disclosure group
-            DisclosureGroup(
-                isExpanded: $isExpanded,
-                content: {
-                    // Render children
-                    ForEach(collection.children) { child in
-                        CollapsibleTreeRow(collection: child, viewModel: viewModel, level: level + 1)
-                    }
-                },
-                label: {
-                    CollectionRowLabel(collection: collection, isRootFolder: collection.isRootFolder)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            viewModel.selectedCollection = collection
-                        }
-                        .contextMenu {
-                            if collection.isRootFolder {
-                                Button(role: .destructive) {
-                                    viewModel.removeRootFolder(collection)
-                                } label: {
-                                    Label("Remove Folder", systemImage: "trash")
-                                }
-                            }
-
-                            Button {
-                                NSWorkspace.shared.selectFile(collection.url.path, inFileViewerRootedAtPath: collection.url.deletingLastPathComponent().path)
-                            } label: {
-                                Label("Reveal in Finder", systemImage: "folder.circle")
-                            }
-                        }
-                }
-            )
-            .tag(collection as PhotoCollection?)
+            }
+        }
+        .onChange(of: viewModel.selectedCollection) { oldValue, newValue in
+            selection = newValue?.id
         }
     }
+
+    private func findCollection(id: UUID, in collection: PhotoCollection) -> PhotoCollection? {
+        if collection.id == id {
+            return collection
+        }
+        for child in collection.children {
+            if let found = findCollection(id: id, in: child) {
+                return found
+            }
+        }
+        return nil
+    }
 }
 
-/// Label for a collection row showing folder icon, name, and progress
-struct CollectionRowLabel: View {
+/// Content for a folder row in the outline
+struct FolderRowContent: View {
     let collection: PhotoCollection
-    let isRootFolder: Bool
+    @ObservedObject var viewModel: RootViewModel
 
     private var progressColor: Color {
         if collection.progress.percentageEdited >= 100 {
@@ -124,70 +90,51 @@ struct CollectionRowLabel: View {
         } else if collection.progress.percentageEdited > 0 {
             return .orange
         } else {
-            return .gray
+            return .secondary
         }
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            // Folder icon
-            Image(systemName: isRootFolder ? "folder.fill" : "folder")
+            Image(systemName: collection.isRootFolder ? "folder.fill" : "folder")
                 .foregroundStyle(progressColor)
-                .font(.system(size: 16))
+                .imageScale(.small)
 
-            VStack(alignment: .leading, spacing: 4) {
-                // Folder name
-                Text(collection.name)
-                    .font(.body)
-                    .lineLimit(1)
+            Text(collection.name)
+                .lineLimit(1)
 
-                // Stats row
-                HStack(spacing: 12) {
-                    // Photo count
-                    if collection.progress.totalPhotos > 0 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "photo")
-                                .font(.system(size: 10))
-                            Text("\(collection.progress.totalPhotos)")
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    }
+            Spacer()
 
-                    // Child folder count
-                    if !collection.children.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "folder")
-                                .font(.system(size: 10))
-                            Text("\(collection.children.count)")
-                        }
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    // Progress percentage
-                    if collection.progress.totalPhotos > 0 {
-                        Text(String(format: "%.0f%%", collection.progress.percentageEdited))
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundStyle(progressColor)
-                    }
-                }
-
-                // Progress bar (compact)
-                if collection.progress.totalPhotos > 0 {
-                    ProgressView(value: collection.progress.percentageEdited, total: 100)
-                        .progressViewStyle(.linear)
-                        .tint(progressColor)
-                        .frame(height: 3)
-                }
+            if collection.progress.totalPhotos > 0 {
+                Text("\(collection.progress.editedPhotos)/\(collection.progress.totalPhotos)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
         }
-        .padding(.vertical, 4)
+        .contextMenu {
+            if collection.isRootFolder {
+                Button(role: .destructive) {
+                    viewModel.removeRootFolder(collection)
+                } label: {
+                    Label("Remove Folder", systemImage: "trash")
+                }
+
+                Divider()
+            }
+
+            Button {
+                NSWorkspace.shared.selectFile(
+                    collection.url.path,
+                    inFileViewerRootedAtPath: collection.url.deletingLastPathComponent().path
+                )
+            } label: {
+                Label("Reveal in Finder", systemImage: "arrow.up.forward.square")
+            }
+        }
     }
 }
+
 
 #Preview {
     NavigationSplitView {

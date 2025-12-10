@@ -168,13 +168,15 @@ struct SubdirectoryRow: View {
     @ObservedObject var viewModel: RootViewModel
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
+            // Main folder button - fully clickable
             Button {
                 viewModel.selectedCollection = collection
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "folder.fill")
                         .foregroundStyle(.blue)
+                        .font(.system(size: 18))
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(collection.name)
@@ -197,24 +199,25 @@ struct SubdirectoryRow: View {
                     Spacer()
 
                     Image(systemName: "chevron.right")
-                        .font(.caption)
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
                 }
+                .contentShape(Rectangle()) // Make entire area clickable
             }
             .buttonStyle(.plain)
 
-            // Reveal in Finder button
+            // Reveal in Finder button - larger and clearer
             Button {
                 NSWorkspace.shared.selectFile(collection.url.path, inFileViewerRootedAtPath: collection.url.deletingLastPathComponent().path)
             } label: {
-                Image(systemName: "folder.circle")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+                Image(systemName: "arrow.up.forward.square")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.blue)
             }
             .buttonStyle(.plain)
             .help("Reveal in Finder")
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(.quaternary.opacity(0.3))
         .clipShape(RoundedRectangle(cornerRadius: 6))
@@ -249,9 +252,9 @@ struct PhotoRow: View {
             Button {
                 NSWorkspace.shared.selectFile(photo.url.path, inFileViewerRootedAtPath: photo.url.deletingLastPathComponent().path)
             } label: {
-                Image(systemName: "folder.circle")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
+                Image(systemName: "arrow.up.forward.square")
+                    .font(.system(size: 18))
+                    .foregroundStyle(.blue)
             }
             .buttonStyle(.plain)
             .help("Reveal in Finder")
@@ -329,7 +332,7 @@ struct JPEGClassificationSheet: View {
                     .font(.system(size: 48))
                     .foregroundStyle(.blue)
 
-                Text("JPEG-Only Folder Detected")
+                Text("Classify JPEG Files")
                     .font(.title2)
                     .fontWeight(.semibold)
 
@@ -340,15 +343,20 @@ struct JPEGClassificationSheet: View {
                         .foregroundStyle(.blue)
                 }
 
-                Text("This folder contains \(collection.photos.count) JPEG file\(collection.photos.count == 1 ? "" : "s") with no RAW files.")
+                let jpegCount = collection.photos.filter { photo in
+                    if case .standaloneJPEG = photo.editStatus { return true }
+                    return false
+                }.count
+
+                Text("This folder contains \(jpegCount) standalone JPEG\(jpegCount == 1 ? "" : "s").")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
             .padding(.top, 20)
-            
+
             // Description
-            Text("How should these photos be counted in your progress?")
+            Text("How should the JPEGs in this folder be counted in your progress?")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 

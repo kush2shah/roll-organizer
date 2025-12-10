@@ -8,15 +8,60 @@
 import SwiftUI
 
 struct RootView: View {
-    @StateObject private var viewModel = RootViewModel()
+    @StateObject private var viewModel: RootViewModel
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
+    init() {
+        self._viewModel = StateObject(wrappedValue: RootViewModel())
+    }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            // Left sidebar: Folder tree
             SidebarView(viewModel: viewModel)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 250)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+        } content: {
+            // Middle: File table with edit status
+            if viewModel.isScanning {
+                ScanningProgressView(progress: viewModel.scanProgress)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
+            } else if let error = viewModel.errorMessage {
+                ContentUnavailableView(
+                    "Error",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(error)
+                )
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
+            } else if let collection = viewModel.selectedCollection,
+                      let rootURL = viewModel.selectedCollectionRootURL {
+                FileTableView(collection: collection, rootFolderURL: rootURL)
+                    .navigationTitle(collection.name)
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
+            } else {
+                ContentUnavailableView(
+                    "No Collection Selected",
+                    systemImage: "folder.badge.questionmark",
+                    description: Text("Select a folder from the sidebar")
+                )
+                    .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
+            }
         } detail: {
-            SummaryView(viewModel: viewModel)
-                .navigationSplitViewColumnWidth(min: 300, ideal: 500)
+            // Right: Thumbnail preview
+            if let collection = viewModel.selectedCollection,
+               let rootURL = viewModel.selectedCollectionRootURL {
+                ThumbnailGridView(photos: collection.photos, rootFolderURL: rootURL)
+                    .navigationTitle("Photos")
+            } else {
+                ContentUnavailableView(
+                    "No Photos",
+                    systemImage: "photo.stack",
+                    description: Text("Select a folder to view photos")
+                )
+            }
+        }
+        .sheet(item: $viewModel.pendingJPEGCollection) { collection in
+            JPEGClassificationSheet(collection: collection, viewModel: viewModel)
         }
         .toolbar {
             ToolbarItem(placement: .automatic) {
@@ -31,9 +76,11 @@ struct RootView: View {
                 .disabled(viewModel.selectedCollection == nil || viewModel.isScanning)
             }
         }
+        .task {
+            // Optionally load saved root folders on first appearance
+            // This is commented out to avoid accessing folders without explicit permission
+            // Uncomment if you want to restore previously selected folders on launch:
+            // await viewModel.loadSavedRootFolders()
+        }
     }
-}
-
-#Preview {
-    RootView()
 }

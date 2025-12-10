@@ -12,21 +12,18 @@ import Combine
 @MainActor
 class RootViewModel: ObservableObject {
     @Published var selectedCollection: PhotoCollection?
-    @Published var rootFolders: [PhotoCollection] = [] // User-selected root folders with full tree
+    @Published var rootFolders: [PhotoCollection] = []
     @Published var isScanning: Bool = false
     @Published var scanProgress: ScanProgress?
     @Published var errorMessage: String?
     @Published var pendingJPEGCollection: PhotoCollection?
-    @Published var pendingJPEGFolderName: String? // Track which folder needs classification
+    @Published var pendingJPEGFolderName: String?
 
-    private let scanner = PhotoScanner()
+    private lazy var scanner = PhotoScanner()
     private let bookmarkManager = BookmarkManager.shared
 
-    init() {
-        // Load saved root folders on launch
-        Task {
-            await loadSavedRootFolders()
-        }
+    nonisolated init() {
+        // Nonisolated init to allow creation from any context
     }
 
     /// Load all saved root folders from bookmarks
@@ -90,21 +87,25 @@ class RootViewModel: ObservableObject {
                     }
                 }
 
-                // Check if the ROOT folder itself has JPEG-only content that needs classification
+                rootFolders.append(collection)
+                selectedCollection = collection
+
+                // IMPORTANT: Set isScanning to false BEFORE showing JPEG classification dialog
+                isScanning = false
+                scanProgress = nil
+
+                // Only check the root folder itself for JPEG classification
+                // Subfolders will be prompted when the user navigates to them
                 if collection.needsJPEGClassification {
                     pendingJPEGCollection = collection
                     pendingJPEGFolderName = collection.name
                 }
-
-                rootFolders.append(collection)
-                selectedCollection = collection
             }
         } catch {
             errorMessage = "Failed to scan directory: \(error.localizedDescription)"
+            isScanning = false
+            scanProgress = nil
         }
-
-        isScanning = false
-        scanProgress = nil
     }
 
     /// Removes a root folder
@@ -155,13 +156,16 @@ class RootViewModel: ObservableObject {
                     } else {
                         selectedCollection = updatedRoot
                     }
+
+                    // Set isScanning to false before showing any dialogs
+                    isScanning = false
+                    scanProgress = nil
                 }
             } catch {
                 errorMessage = "Failed to refresh: \(error.localizedDescription)"
+                isScanning = false
+                scanProgress = nil
             }
-
-            isScanning = false
-            scanProgress = nil
         }
     }
 
@@ -196,6 +200,7 @@ class RootViewModel: ObservableObject {
 
         // Clear pending
         pendingJPEGCollection = nil
+        pendingJPEGFolderName = nil
     }
 
     /// Recursively updates a collection in the tree
@@ -222,5 +227,24 @@ class RootViewModel: ObservableObject {
     func dismissJPEGClassification() {
         pendingJPEGCollection = nil
         pendingJPEGFolderName = nil
+    }
+
+    /// Get the root folder URL for a given collection
+    func getRootFolderURL(for collection: PhotoCollection?) -> URL? {
+        guard let collection = collection else { return nil }
+
+        // Find the root folder that contains this collection
+        for rootFolder in rootFolders {
+            if rootFolder.id == collection.id || rootFolder.flattenedCollections().contains(where: { $0.id == collection.id }) {
+                return rootFolder.url
+            }
+        }
+
+        return nil
+    }
+
+    /// Get the root folder URL for the currently selected collection
+    var selectedCollectionRootURL: URL? {
+        getRootFolderURL(for: selectedCollection)
     }
 }

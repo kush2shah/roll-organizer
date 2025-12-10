@@ -91,10 +91,20 @@ struct PhotoCollection: Identifiable, Codable, Hashable, Sendable {
             return false
         }
     }
-    
+
+    /// Check if this collection contains any standalone JPEGs
+    var hasStandaloneJPEGs: Bool {
+        return photos.contains { photo in
+            if case .standaloneJPEG = photo.editStatus {
+                return true
+            }
+            return false
+        }
+    }
+
     /// Check if JPEGs need classification
     var needsJPEGClassification: Bool {
-        return hasOnlyStandaloneJPEGs && jpegClassification == nil
+        return hasStandaloneJPEGs && jpegClassification == nil
     }
     
     /// Recursively flatten all collections in the tree
@@ -104,5 +114,10 @@ struct PhotoCollection: Identifiable, Codable, Hashable, Sendable {
             result.append(contentsOf: child.flattenedCollections())
         }
         return result
+    }
+
+    /// Optional children for OutlineGroup compatibility
+    var optionalChildren: [PhotoCollection]? {
+        children.isEmpty ? nil : children
     }
 }

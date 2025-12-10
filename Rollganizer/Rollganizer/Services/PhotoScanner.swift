@@ -9,7 +9,7 @@ import Foundation
 
 actor PhotoScanner {
     private let detectionEngine: EditDetectionEngine
-    
+
     init() {
         self.detectionEngine = EditDetectionEngine()
     }
@@ -17,6 +17,16 @@ actor PhotoScanner {
     enum ScanError: Error {
         case directoryNotAccessible
         case invalidDirectory
+    }
+
+    /// Helper to get display name from URL using resource values (nonisolated)
+    private nonisolated func getDisplayName(for url: URL) -> String {
+        if let resourceValues = try? url.resourceValues(forKeys: [.localizedNameKey]),
+           let displayName = resourceValues.localizedName {
+            return displayName
+        }
+        // Fallback to lastPathComponent if resource values unavailable
+        return url.lastPathComponent
     }
 
     /// Scans a directory for RAW photo files and detects their edit status.
@@ -122,7 +132,7 @@ actor PhotoScanner {
         // Create and return the collection
         let collection = PhotoCollection(
             url: url,
-            name: url.lastPathComponent,
+            name: getDisplayName(for: url),
             photos: photos
         )
 
@@ -168,7 +178,7 @@ actor PhotoScanner {
         scannedCount += 1
         if let progressHandler = progressHandler {
             let progress = ScanProgress(
-                currentFolder: url.lastPathComponent,
+                currentFolder: getDisplayName(for: url),
                 foldersScanned: scannedCount,
                 totalFolders: totalFolders
             )
@@ -291,7 +301,7 @@ actor PhotoScanner {
         // Create and return the collection with children
         let collection = PhotoCollection(
             url: url,
-            name: url.lastPathComponent,
+            name: getDisplayName(for: url),
             photos: photos,
             children: childCollections,
             parentURL: parentURL,
