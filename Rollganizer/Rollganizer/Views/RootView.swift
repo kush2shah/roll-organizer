@@ -24,7 +24,7 @@ struct RootView: View {
             // Middle: File table with edit status
             if viewModel.isScanning {
                 ScanningProgressView(progress: viewModel.scanProgress)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
             } else if let error = viewModel.errorMessage {
                 ContentUnavailableView(
@@ -32,10 +32,11 @@ struct RootView: View {
                     systemImage: "exclamationmark.triangle",
                     description: Text(error)
                 )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
             } else if let collection = viewModel.selectedCollection,
                       let rootURL = viewModel.selectedCollectionRootURL {
-                FileTableView(collection: collection, rootFolderURL: rootURL)
+                FileTableView(collection: collection, rootFolderURL: rootURL, viewModel: viewModel)
                     .navigationTitle(collection.name)
                     .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
             } else {
@@ -44,6 +45,7 @@ struct RootView: View {
                     systemImage: "folder.badge.questionmark",
                     description: Text("Select a folder from the sidebar")
                 )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
                     .navigationSplitViewColumnWidth(min: 300, ideal: 400, max: 600)
             }
         } detail: {
@@ -58,6 +60,7 @@ struct RootView: View {
                     systemImage: "photo.stack",
                     description: Text("Select a folder to view photos")
                 )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
         .sheet(item: $viewModel.pendingJPEGCollection) { collection in

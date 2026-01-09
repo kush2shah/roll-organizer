@@ -10,24 +10,60 @@ import SwiftUI
 struct SidebarView: View {
     @ObservedObject var viewModel: RootViewModel
     @State private var selection: PhotoCollection.ID?
+    @State private var expandedFolders = Set<UUID>()
 
     var body: some View {
-        List(selection: $selection) {
+        Group {
             if viewModel.rootFolders.isEmpty {
                 ContentUnavailableView(
                     "No Folders",
                     systemImage: "folder.badge.plus",
                     description: Text("Add a folder to get started")
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             } else {
-                ForEach(viewModel.rootFolders) { rootFolder in
-                    OutlineGroup(rootFolder, children: \.optionalChildren) { collection in
-                        FolderRowContent(collection: collection, viewModel: viewModel)
+                List(selection: $selection) {
+                    ForEach(viewModel.rootFolders) { rootFolder in
+                        FolderTreeRow(
+                            collection: rootFolder,
+                            viewModel: viewModel,
+                            expandedFolders: $expandedFolders,
+                            level: 0
+                        )
+                    }
+                }
+                .listStyle(.sidebar)
+                .onChange(of: selection) { oldValue, newValue in
+                    // Only update if selection actually changed and is different from viewModel
+                    if let newValue = newValue, newValue != viewModel.selectedCollection?.id {
+                        // Find the collection with this ID
+                        for rootFolder in viewModel.rootFolders {
+                            if let found = findCollection(id: newValue, in: rootFolder) {
+                                viewModel.selectedCollection = found
+
+                                // Check if this folder needs JPEG classification
+                                if found.needsJPEGClassification {
+                                    viewModel.pendingJPEGCollection = found
+                                    viewModel.pendingJPEGFolderName = found.name
+                                }
+                                break
+                            }
+                        }
+                    }
+                }
+                .onChange(of: viewModel.selectedCollection) { oldValue, newValue in
+                    // Sync selection with viewModel
+                    if selection != newValue?.id {
+                        selection = newValue?.id
+                    }
+
+                    // Auto-expand parent folders to reveal the selected folder
+                    if let newValue = newValue {
+                        expandParentFolders(for: newValue)
                     }
                 }
             }
         }
-        .listStyle(.sidebar)
         .navigationTitle("Photo Collections")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -38,29 +74,9 @@ struct SidebarView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .help("Add Root Folder")
+                .help("Add Root Folder (⌘O)")
                 .keyboardShortcut("o", modifiers: .command)
             }
-        }
-        .onChange(of: selection) { oldValue, newValue in
-            if let newValue = newValue {
-                // Find the collection with this ID
-                for rootFolder in viewModel.rootFolders {
-                    if let found = findCollection(id: newValue, in: rootFolder) {
-                        viewModel.selectedCollection = found
-
-                        // Check if this folder needs JPEG classification
-                        if found.needsJPEGClassification {
-                            viewModel.pendingJPEGCollection = found
-                            viewModel.pendingJPEGFolderName = found.name
-                        }
-                        break
-                    }
-                }
-            }
-        }
-        .onChange(of: viewModel.selectedCollection) { oldValue, newValue in
-            selection = newValue?.id
         }
     }
 
@@ -74,6 +90,78 @@ struct SidebarView: View {
             }
         }
         return nil
+    }
+
+    /// Find the path of parent IDs needed to reach the target collection
+    private func findParentPath(for target: PhotoCollection, in collection: PhotoCollection, currentPath: [UUID] = []) -> [UUID]? {
+        if collection.id == target.id {
+            return currentPath
+        }
+
+        for child in collection.children {
+            let newPath = currentPath + [collection.id]
+            if let found = findParentPath(for: target, in: child, currentPath: newPath) {
+                return found
+            }
+        }
+
+        return nil
+    }
+
+    /// Expand all parent folders needed to show the target collection
+    private func expandParentFolders(for target: PhotoCollection) {
+        // Find which root folder contains the target
+        for rootFolder in viewModel.rootFolders {
+            if let parentPath = findParentPath(for: target, in: rootFolder) {
+                // Expand all folders in the path
+                for parentID in parentPath {
+                    expandedFolders.insert(parentID)
+                }
+                break
+            }
+        }
+    }
+}
+
+/// Recursive folder tree row with disclosure control
+struct FolderTreeRow: View {
+    let collection: PhotoCollection
+    @ObservedObject var viewModel: RootViewModel
+    @Binding var expandedFolders: Set<UUID>
+    let level: Int
+
+    private var isExpanded: Binding<Bool> {
+        Binding(
+            get: { expandedFolders.contains(collection.id) },
+            set: { newValue in
+                if newValue {
+                    expandedFolders.insert(collection.id)
+                } else {
+                    expandedFolders.remove(collection.id)
+                }
+            }
+        )
+    }
+
+    var body: some View {
+        if collection.children.isEmpty {
+            // Leaf node - no disclosure
+            FolderRowContent(collection: collection, viewModel: viewModel)
+        } else {
+            // Node with children - use disclosure group
+            DisclosureGroup(isExpanded: isExpanded) {
+                ForEach(collection.children) { child in
+                    FolderTreeRow(
+                        collection: child,
+                        viewModel: viewModel,
+                        expandedFolders: $expandedFolders,
+                        level: level + 1
+                    )
+                }
+            } label: {
+                FolderRowContent(collection: collection, viewModel: viewModel)
+            }
+        }
     }
 }
 

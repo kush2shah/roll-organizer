@@ -25,6 +25,7 @@ class BookmarkManager {
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
+        log.logBookmarkCreated(path: url.path)
         return bookmarkData
     }
 
@@ -37,6 +38,8 @@ class BookmarkManager {
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
         )
+
+        log.logBookmarkResolved(path: url.path, wasStale: isStale)
 
         if isStale {
             // Bookmark is stale, recreate it
@@ -111,6 +114,7 @@ class BookmarkManager {
     /// Access a security-scoped resource safely
     func accessSecuredResource<T>(_ url: URL, work: () throws -> T) throws -> T {
         guard url.startAccessingSecurityScopedResource() else {
+            log.logBookmarkError(path: url.path, error: BookmarkError.accessDenied)
             throw BookmarkError.accessDenied
         }
 
@@ -124,6 +128,7 @@ class BookmarkManager {
     /// Access a security-scoped resource safely (async version)
     func accessSecuredResourceAsync<T>(_ url: URL, work: () async throws -> T) async throws -> T {
         guard url.startAccessingSecurityScopedResource() else {
+            log.logBookmarkError(path: url.path, error: BookmarkError.accessDenied)
             throw BookmarkError.accessDenied
         }
 

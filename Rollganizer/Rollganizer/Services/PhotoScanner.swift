@@ -12,6 +12,7 @@ actor PhotoScanner {
 
     init() {
         self.detectionEngine = EditDetectionEngine()
+        log.debug("PhotoScanner initialized", category: .scanner)
     }
 
     enum ScanError: Error {
@@ -36,12 +37,16 @@ actor PhotoScanner {
     /// Non-recursive: only scans immediate directory contents.
     /// Tracks subdirectories for display but does not scan them.
     func scanDirectory(_ url: URL) async throws -> PhotoCollection {
+        let startTime = Date()
+        log.logScanStart(folder: url, recursive: false)
+
         let fileManager = FileManager.default
 
         // Verify the URL is a directory
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory),
               isDirectory.boolValue else {
+            log.logScanError(folder: url, error: ScanError.invalidDirectory)
             throw ScanError.invalidDirectory
         }
 
@@ -60,6 +65,7 @@ actor PhotoScanner {
             includingPropertiesForKeys: resourceKeys,
             options: [.skipsHiddenFiles, .skipsPackageDescendants, .skipsSubdirectoryDescendants]
         ) else {
+            log.logScanError(folder: url, error: ScanError.directoryNotAccessible)
             throw ScanError.directoryNotAccessible
         }
 
@@ -136,6 +142,9 @@ actor PhotoScanner {
             photos: photos
         )
 
+        let duration = Date().timeIntervalSince(startTime)
+        log.logScanComplete(folder: url, photoCount: photos.count, duration: duration)
+
         return collection
     }
 
@@ -147,15 +156,19 @@ actor PhotoScanner {
         isRootFolder: Bool = false,
         progressHandler: ((ScanProgress) -> Void)? = nil
     ) async throws -> PhotoCollection {
+        let startTime = Date()
+        log.logScanStart(folder: url, recursive: true)
+
         // First pass: count total folders for progress tracking
         var totalFolderCount = 0
         if isRootFolder {
             totalFolderCount = await countSubdirectories(url)
+            log.debug("Found \(totalFolderCount) total folders to scan", category: .scanner)
         }
 
         var scannedCount = 0
 
-        return try await scanDirectoryTreeRecursive(
+        let result = try await scanDirectoryTreeRecursive(
             url,
             parentURL: parentURL,
             isRootFolder: isRootFolder,
@@ -163,6 +176,11 @@ actor PhotoScanner {
             scannedCount: &scannedCount,
             progressHandler: progressHandler
         )
+
+        let duration = Date().timeIntervalSince(startTime)
+        log.logScanComplete(folder: url, photoCount: result.progress.totalPhotos, duration: duration)
+
+        return result
     }
 
     /// Internal recursive scan with progress tracking
@@ -294,7 +312,7 @@ actor PhotoScanner {
                 childCollections.append(childCollection)
             } catch {
                 // Skip directories that can't be accessed
-                print("Failed to scan subdirectory \(subDirURL.lastPathComponent): \(error)")
+                log.warning("Failed to scan subdirectory \(subDirURL.lastPathComponent): \(error.localizedDescription)", category: .scanner)
             }
         }
 
