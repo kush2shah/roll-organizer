@@ -7,6 +7,15 @@ import SwiftUI
 import AppKit
 import QuickLook
 
+// MARK: - Thumbnail Colors
+private enum ThumbnailColors {
+    static let edited = Color.green
+    static let unedited = Color(nsColor: .tertiaryLabelColor)
+    static let inCamera = Color.orange
+    static let sooc = Color.blue
+    static let raw = Color.accentColor
+}
+
 /// Shared thumbnail cache with memory limits
 @MainActor
 class ThumbnailCache {
@@ -91,9 +100,10 @@ struct ThumbnailItemView: View {
 
     @State private var thumbnailImage: NSImage?
     @State private var isLoading = true
+    @State private var isHovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             ZStack {
                 if let image = thumbnailImage {
                     Image(nsImage: image)
@@ -101,40 +111,36 @@ struct ThumbnailItemView: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 150, height: 150)
                         .clipped()
-                        .cornerRadius(8)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 } else if isLoading {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .controlBackgroundColor))
                         .frame(width: 150, height: 150)
-                        .cornerRadius(8)
                         .overlay {
                             ProgressView()
                                 .controlSize(.small)
                         }
                 } else {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(nsColor: .controlBackgroundColor))
                         .frame(width: 150, height: 150)
-                        .cornerRadius(8)
                         .overlay {
-                            Image(systemName: "exclamationmark.triangle")
-                                .foregroundColor(.secondary)
+                            Image(systemName: "photo")
+                                .font(.title)
+                                .foregroundStyle(.tertiary)
                         }
                 }
 
                 // Badges overlay
                 VStack {
                     HStack {
-                        // XMP sidecar indicator (bottom-left)
+                        // XMP sidecar indicator
                         if case .edited(let method) = photo.editStatus, method == .xmpSidecar {
-                            Image(systemName: "doc.text.fill")
-                                .font(.system(size: 14))
-                                .foregroundColor(.orange)
-                                .background(Circle().fill(Color.white).padding(-3))
+                            BadgePill(icon: "doc.text.fill", color: ThumbnailColors.edited)
                                 .help("XMP Sidecar")
                         }
                         Spacer()
-                        // Edit status badge (top-right)
+                        // Edit status badge
                         editStatusBadge
                     }
                     Spacer()
@@ -143,51 +149,51 @@ struct ThumbnailItemView: View {
             }
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.accentColor, lineWidth: isSelected ? 3 : 0)
+                    .stroke(isSelected ? Color.accentColor : (isHovered ? Color.accentColor.opacity(0.5) : .clear), lineWidth: isSelected ? 3 : 2)
             )
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: isHovered)
+            .onHover { hovering in
+                isHovered = hovering
+            }
 
             // File name
             Text(photo.fileName)
-                .font(.caption)
-                .lineLimit(2)
+                .font(.system(size: 11))
+                .lineLimit(1)
+                .truncationMode(.middle)
                 .frame(width: 150, alignment: .leading)
-                .foregroundColor(.primary)
+                .foregroundStyle(isSelected ? .primary : .secondary)
         }
         .task {
             await loadThumbnail()
         }
         .onDisappear {
-            // Release the thumbnail from local state when view disappears
-            // The cache will still hold it if needed
             thumbnailImage = nil
         }
     }
 
     @ViewBuilder
     private var editStatusBadge: some View {
-        Group {
-            switch photo.editStatus {
-            case .edited:
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                    .background(Circle().fill(Color.white))
-            case .unedited:
-                if photo.fileType == .raw {
-                    Image(systemName: "r.circle.fill")
-                        .foregroundColor(.blue)
-                        .background(Circle().fill(Color.white))
-                }
-            case .standaloneJPEG(let classification):
-                if classification == .editedExport || classification == .finalSOOC {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                        .background(Circle().fill(Color.white))
-                }
-            case .inCameraJPEG:
+        switch photo.editStatus {
+        case .edited:
+            BadgePill(icon: "checkmark", color: ThumbnailColors.edited)
+        case .unedited:
+            if photo.fileType == .raw {
+                BadgePill(icon: "r.circle", color: ThumbnailColors.raw)
+            }
+        case .standaloneJPEG(let classification):
+            switch classification {
+            case .editedExport:
+                BadgePill(icon: "checkmark", color: ThumbnailColors.edited)
+            case .finalSOOC:
+                BadgePill(icon: "checkmark", color: ThumbnailColors.sooc)
+            case .needsEditing:
                 EmptyView()
             }
+        case .inCameraJPEG:
+            BadgePill(icon: "camera", color: ThumbnailColors.inCamera)
         }
-        .font(.system(size: 16))
     }
 
     private func loadThumbnail() async {
@@ -252,5 +258,20 @@ struct ThumbnailItemView: View {
             ThumbnailCache.shared.setImage(image, for: thumbnailURL)
             thumbnailImage = image
         }
+    }
+}
+
+// MARK: - Badge Pill
+struct BadgePill: View {
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: 10, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(4)
+            .background(color, in: Circle())
+            .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
     }
 }

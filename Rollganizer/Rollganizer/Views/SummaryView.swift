@@ -7,6 +7,16 @@
 
 import SwiftUI
 
+// MARK: - Summary Colors
+private enum SummaryColors {
+    static let edited = Color.green
+    static let unedited = Color(nsColor: .tertiaryLabelColor)
+    static let inCamera = Color.orange
+    static let sooc = Color.blue
+    static let progress50Plus = Color.green
+    static let progressUnder50 = Color.orange
+}
+
 struct SummaryView: View {
     @ObservedObject var viewModel: RootViewModel
 
@@ -151,11 +161,11 @@ struct ProgressCard: View {
                 Text(String(format: "%.1f%%", progress.percentageEdited))
                     .font(.system(.title, design: .rounded))
                     .bold()
-                    .foregroundStyle(progress.percentageEdited > 50 ? .green : .orange)
+                    .foregroundStyle(progress.percentageEdited >= 50 ? SummaryColors.progress50Plus : SummaryColors.progressUnder50)
             }
 
             ProgressView(value: progress.percentageEdited, total: 100)
-                .tint(progress.percentageEdited > 50 ? .green : .orange)
+                .tint(progress.percentageEdited >= 50 ? SummaryColors.progress50Plus : SummaryColors.progressUnder50)
         }
         .padding()
         .background(.quaternary.opacity(0.5))
@@ -268,25 +278,25 @@ struct PhotoRow: View {
         switch photo.editStatus {
         case .edited:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+                .foregroundStyle(SummaryColors.edited)
         case .inCameraJPEG:
             Image(systemName: "camera.circle.fill")
-                .foregroundStyle(.orange)
+                .foregroundStyle(SummaryColors.inCamera)
         case .standaloneJPEG(let classification):
             switch classification {
             case .editedExport:
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(SummaryColors.edited)
             case .finalSOOC:
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(SummaryColors.sooc)
             case .needsEditing:
                 Image(systemName: "circle")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SummaryColors.unedited)
             }
         case .unedited:
             Image(systemName: "circle")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SummaryColors.unedited)
         }
     }
 

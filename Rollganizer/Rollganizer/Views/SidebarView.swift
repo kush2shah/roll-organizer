@@ -7,6 +7,14 @@
 
 import SwiftUI
 
+// MARK: - Sidebar Colors
+private enum SidebarColors {
+    static let complete = Color.green
+    static let partial = Color.accentColor
+    static let started = Color.orange
+    static let empty = Color(nsColor: .tertiaryLabelColor)
+}
+
 struct SidebarView: View {
     @ObservedObject var viewModel: RootViewModel
     @State private var selection: PhotoCollection.ID?
@@ -171,33 +179,60 @@ struct FolderRowContent: View {
     @ObservedObject var viewModel: RootViewModel
 
     private var progressColor: Color {
-        if collection.progress.percentageEdited >= 100 {
-            return .green
-        } else if collection.progress.percentageEdited >= 50 {
-            return .blue
-        } else if collection.progress.percentageEdited > 0 {
-            return .orange
+        let pct = collection.progress.percentageEdited
+        if pct >= 100 {
+            return SidebarColors.complete
+        } else if pct >= 50 {
+            return SidebarColors.partial
+        } else if pct > 0 {
+            return SidebarColors.started
         } else {
-            return .secondary
+            return SidebarColors.empty
         }
     }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: collection.isRootFolder ? "folder.fill" : "folder")
-                .foregroundStyle(progressColor)
-                .imageScale(.small)
+            // Folder icon with subtle badge
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: collection.isRootFolder ? "folder.fill" : "folder")
+                    .foregroundStyle(progressColor)
+                    .font(.system(size: 14))
+
+                // Completion dot for root folders
+                if collection.isRootFolder && collection.progress.percentageEdited >= 100 {
+                    Circle()
+                        .fill(SidebarColors.complete)
+                        .frame(width: 6, height: 6)
+                        .offset(x: 2, y: 2)
+                }
+            }
 
             Text(collection.name)
                 .lineLimit(1)
+                .font(.system(size: 13))
 
             Spacer()
 
+            // Compact progress indicator
             if collection.progress.totalPhotos > 0 {
-                Text("\(collection.progress.editedPhotos)/\(collection.progress.totalPhotos)")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+                HStack(spacing: 4) {
+                    // Mini progress bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color(nsColor: .separatorColor))
+                            Capsule()
+                                .fill(progressColor)
+                                .frame(width: geo.size.width * CGFloat(collection.progress.percentageEdited / 100))
+                        }
+                    }
+                    .frame(width: 24, height: 4)
+
+                    Text("\(collection.progress.editedPhotos)")
+                        .font(.system(size: 10, weight: .medium, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .contextMenu {

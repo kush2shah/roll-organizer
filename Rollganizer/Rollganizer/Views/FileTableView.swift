@@ -115,18 +115,20 @@ struct FileTableView: View {
                     if row.isFolder {
                         // Disclosure triangle for folders
                         Button(action: {
-                            toggleFolder(row)
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                toggleFolder(row)
+                            }
                         }) {
                             Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.tertiary)
                                 .rotationEffect(.degrees(expandedFolders.contains(row.id) ? 90 : 0))
-                                .frame(width: 16, height: 16)
+                                .frame(width: 14, height: 14)
                         }
                         .buttonStyle(.plain)
 
                         Image(systemName: "folder.fill")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(AppColors.folder.opacity(0.8))
                             .imageScale(.small)
                     } else {
                         // Spacer for non-folders to align with folder items
@@ -199,9 +201,30 @@ struct FileTableView: View {
     }
 
     private var sortedRows: [FileRow] {
-        // Return cached rows in their hierarchical order
-        // Sorting is already applied during buildFileRows to maintain hierarchy
-        cachedRows
+        // Apply search and filter to cached rows
+        cachedRows.filter { row in
+            // Search filter
+            let matchesSearch = searchText.isEmpty || row.name.localizedCaseInsensitiveContains(searchText)
+
+            // Status filter (folders always pass status filter)
+            let matchesStatus: Bool
+            if row.isFolder {
+                matchesStatus = true
+            } else {
+                switch statusFilter {
+                case .all:
+                    matchesStatus = true
+                case .edited:
+                    matchesStatus = row.isEdited
+                case .unedited:
+                    matchesStatus = !row.isEdited && !row.isInCamera
+                case .inCamera:
+                    matchesStatus = row.isInCamera
+                }
+            }
+
+            return matchesSearch && matchesStatus
+        }
     }
 
     private func rebuildRows() async {
@@ -259,7 +282,9 @@ struct FileTableView: View {
                 statusText: "",
                 fileTypeDisplay: "",
                 variantCount: 0,
-                dateModified: nil
+                dateModified: nil,
+                isEdited: false,
+                isInCamera: false
             )
         }.sorted(using: sortOrder)
 
@@ -275,7 +300,22 @@ struct FileTableView: View {
 
         // Build and add photo rows (sorted)
         let photoRows: [FileRow] = collection.photos.map { photo in
-            FileRow(
+            let isEdited: Bool
+            let isInCamera: Bool
+
+            switch photo.editStatus {
+            case .edited, .standaloneJPEG(.editedExport), .standaloneJPEG(.finalSOOC):
+                isEdited = true
+                isInCamera = false
+            case .inCameraJPEG:
+                isEdited = false
+                isInCamera = true
+            default:
+                isEdited = false
+                isInCamera = false
+            }
+
+            return FileRow(
                 id: photo.id,
                 name: photo.fileName,
                 level: level,
@@ -286,7 +326,9 @@ struct FileTableView: View {
                 statusText: statusText(for: photo),
                 fileTypeDisplay: fileTypeDisplay(for: photo),
                 variantCount: photo.editedVariants.count + photo.inCameraJPEGs.count,
-                dateModified: fileModificationDate(for: photo.url)
+                dateModified: fileModificationDate(for: photo.url),
+                isEdited: isEdited,
+                isInCamera: isInCamera
             )
         }.sorted(using: sortOrder)
 
@@ -300,25 +342,25 @@ struct FileTableView: View {
             switch photo.editStatus {
             case .edited:
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(AppColors.edited)
             case .inCameraJPEG:
                 Image(systemName: "camera.circle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(AppColors.inCamera)
             case .standaloneJPEG(let classification):
                 switch classification {
                 case .editedExport:
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(AppColors.edited)
                 case .finalSOOC:
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(AppColors.sooc)
                 case .needsEditing:
                     Image(systemName: "circle")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppColors.unedited)
                 }
             case .unedited:
                 Image(systemName: "circle")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(AppColors.unedited)
             }
         }
         .imageScale(.small)
@@ -366,9 +408,35 @@ struct FileRow: Identifiable, Equatable {
     let fileTypeDisplay: String
     let variantCount: Int
     let dateModified: Date?
+    let isEdited: Bool
+    let isInCamera: Bool
 
     static func == (lhs: FileRow, rhs: FileRow) -> Bool {
         lhs.id == rhs.id
+    }
+}
+
+// MARK: - Progress Ring
+struct ProgressRing: View {
+    let progress: Double // 0.0 to 1.0
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 3)
+
+            Circle()
+                .trim(from: 0, to: CGFloat(min(max(progress, 0), 1)))
+                .stroke(
+                    progress >= 0.5 ? AppColors.progress50Plus : AppColors.progressUnder50,
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+
+            Text("\(Int(progress * 100))")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(progress >= 0.5 ? AppColors.progress50Plus : AppColors.progressUnder50)
+        }
     }
 }
 
